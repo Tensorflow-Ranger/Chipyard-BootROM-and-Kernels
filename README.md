@@ -1,77 +1,139 @@
 # Stale Data Project
 
-## Preprocessing Pipeline:
-1. Chisel elaboration
-2. FIRRTL transforms
-   - WithMemToRegs  
-3. Verilog emission
+## Preprocessing Pipeline
 
-4. ext_definition_adder
-   - Generates *_ext stubs
-   - You manually fix missing ports (R0_en, etc.) 
-   - Add plusarg_reader blackbox               
+This pipeline prepares a **SmallBoom** design for scalable formal verification by eliminating memories, completing missing module definitions, selectively blackboxing internal logic, and producing a clean BTOR2 model.
 
-5. shallow blackboxing script
-   - Abstract internal modules
+### High-level flow
 
-6. Yosys → BTOR2
-   - No memories
-   - No missing modules
+1. **Chisel elaboration**
 
-7. BTOR2 cleaner
-   - Fix names
+2. **FIRRTL transforms**
 
+   * `WithMemToRegs` (replace memories with registers)
 
+3. **Verilog emission**
 
-# # Steps to build the pipeline:
-1) Add this to BoomConfig.scala
-```bash
+4. **`ext_definition_adder.py`**
+
+   * Generate missing `*_ext` blackbox stubs
+   * Manually fix missing ports (`R0_en`, etc.)
+   * Add `plusarg_reader` blackbox
+
+5. **`verilog-blackboxing.py`**
+
+   * Perform shallow blackboxing inside `BoomTile`
+
+6. **Yosys → BTOR2**
+
+   * No memories
+   * No missing modules
+
+7. **`btor2-cleaner.py`**
+
+   * Normalize and clean BTOR2 signal names
+
+---
+
+## Steps to Build the Pipeline
+
+### 1. Add `MemToRegs` FIRRTL transform
+
+Add the following to `BoomConfig.scala` to eliminate memories *before* Verilog is generated:
+
+```scala
 import chisel3._
 import firrtl.options.Dependency
 import firrtl.passes.ReplaceMems
 import firrtl.stage.Forms
 import freechips.rocketchip.config.{Config, Field, Parameters}
 
-// This is the transform that will run the ReplaceMems pass.
+// FIRRTL transform to replace all memories with registers
 class MemToRegs extends firrtl.Transform {
   override def invalidates(a: firrtl.Transform): Boolean = false
   override def dependencies = Seq(Dependency(firrtl.passes.RemoveValidIf))
   override def name = "Replace All Mems with Registers"
 
   override def execute(state: firrtl.CircuitState): firrtl.CircuitState = {
-    val circuit = state.circuit
-    val result = (new ReplaceMems).run(circuit)
+    val result = (new ReplaceMems).run(state.circuit)
     state.copy(circuit = result)
   }
 }
 
-// This is a Config fragment that you can mix into your main Config.
+// Config fragment to enable the transform
 class WithMemToRegs extends Config((site, here, up) => {
   case firrtl.stage.FirrtlCircuitAnnotation =>
     Seq(firrtl.annotations.Annotation(
-      firrtl.CircuitTarget("Top"), // Apply to the whole design
+      firrtl.CircuitTarget("Top"),
       classOf[MemToRegs],
       ""
     ))
 })
 
+// Example SmallBoom config with memory elimination enabled
 class SmallBoomV4Config extends Config(
-  new WithMemToRegs ++ // <--- Add this line
+  new WithMemToRegs ++
   new boom.v4.common.WithSmallBooms ++
   new chipyard.config.AbstractConfig
 )
 ```
 
-2) Build SmallBoom in chipyard
+---
 
-3) Use SV2V to get a combined verilog file for the entire SmallBoom Build
+### 2. Build SmallBoom in Chipyard
 
-4) Run ext_definition_adder.py to add in missing definitions that verilator would typically fill in during simulation
+Build using the config that includes `WithMemToRegs`:
 
-6) Add R0_en in meta_0_ext and ghist_0_ext, rob_compact_uop_mem_0_ext
-
-7) Add definition for plusarg_reader 
 ```bash
+make <target> CONFIG=SmallBoomV4Config
+```
+
+This ensures all FIRRTL memories are converted into registers.
+
+---
+
+### 3. Generate a combined Verilog file
+
+Use **SV2V** to merge the generated Verilog into a single file representing the full SmallBoom design.
+
+---
+
+### 4. Add missing `_ext` module definitions
+
+Run:
+
+```bash
+python ext_definition_adder.py
+```
+
+This:
+
+* Detects instantiated but undefined `*_ext` modules
+* Auto-generates minimal blackbox definitions
+
+These stubs replace behavior that simulators like Verilator normally fill in.
+
+---
+
+### 5. Manually fix missing ports
+
+Some `_ext` modules require manual fixes that cannot be inferred automatically:
+
+* `meta_0_ext`
+* `ghist_0_ext`
+* `rob_compact_uop_mem_0_ext`
+
+Add missing ports such as:
+
+* `R0_en`
+
+---
+
+### 6. Add `plusarg_reader` blackbox
+
+Append the following blackbox definition to the combined Verilog:
+
+```verilog
 module plusarg_reader #(
     parameter DEFAULT = 0,
     parameter FORMAT = "",
@@ -83,11 +145,55 @@ module plusarg_reader #(
 endmodule
 ```
 
-8) Use verilog-blackboxing.py to perform shallow blackboxing. 
+This removes simulation-only dependencies from the design.
 
-9) Run script.ys using Yosys to get a .btor2 file
+---
 
-10) Use btor2-cleaner.py to provide names to each state in the btor2 and clean it up. 
+### 7. Perform shallow blackboxing
+
+Run:
+
+```bash
+python verilog-blackboxing.py
+```
+
+This:
+
+* Treats `BoomTile` as the verification boundary
+* Blackboxes most internal modules
+* Preserves selected whitebox modules (e.g., `LSU`) and their subtrees
+
+---
+
+### 8. Convert Verilog to BTOR2
+
+Run Yosys with your script:
+
+```bash
+yosys script.ys
+```
+
+This produces a `.btor2` file with:
+
+* No memories
+* No missing modules
+* Clean blackbox cutpoints
+
+---
+
+### 9. Clean the BTOR2
+
+Finally, normalize signal names:
+
+```bash
+python btor2-cleaner.py input.btor2 output.btor2
+```
+
+This:
+
+* Removes junk names
+* Resolves inline vs comment names
+* Produces a readable, deterministic BTOR2 model
 
 ---
 
