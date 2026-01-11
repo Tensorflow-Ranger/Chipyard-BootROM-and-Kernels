@@ -1,284 +1,93 @@
-# Stale Data Project
+Here is the updated `README.md`. It prioritizes the "How-To" for immediate execution, followed by the technical deep dive into what the pipeline actually does.
 
-## Preprocessing Pipeline
+***
 
-This pipeline prepares a **SmallBoom** design for scalable formal verification by eliminating memories, completing missing module definitions, selectively blackboxing internal logic, and producing a clean BTOR2 model.
+# Stale Data Project: SmallBoom Verification Pipeline
 
-### High-level flow
+This repository contains the preprocessing pipeline designed to prepare the **SmallBoom** RISC-V design for scalable formal verification. The pipeline transforms a raw Chisel/Verilog design into a clean, optimized **BTOR2** model by eliminating memories, handling missing definitions, and applying selective blackboxing.
 
-1. **Chisel elaboration**
+## 🚀 How to Run the Flow
 
-2. **FIRRTL transforms**
+### Prerequisites
+*   **Chipyard** (with `verilator` and `yosys` installed in the environment)
+*   **Python 3.6+**
+*   **Yosys** (Version 0.60+ recommended for `cutpoint -blackbox` support)
 
-   * `WithMemToRegs` (replace memories with registers)
+### Phase 1: Chisel Generation 
+Before running the scripts, you must generate the Verilog.
+Note: You do not need to eliminate memories at this stage. Yosys will do that for us. 
 
-3. **Verilog emission**
+1.  **Build Chipyard**:
+    ```bash
+    make <target> CONFIG=SmallBoomV4Config
+    ```
+3.  **Convert to Single File**: Use `sv2v` or similar tools to merge the generated Verilog into a single file named `combined_converted.v`.
 
-4. **`ext_definition_adder.py`**
+### Phase 2: Automated Preprocessing
+We provide a single orchestrator script, `run_formal_flow.py`, to handle the entire chain from Verilog to BTOR2.
 
-   * Generate missing `*_ext` blackbox stubs
-   * Manually fix missing ports (`R0_en`, etc.)
-   * Add `plusarg_reader` blackbox
-
-5. **`verilog-blackboxing.py`**
-
-   * Perform shallow blackboxing inside `BoomTile`
-
-6. **Yosys → BTOR2**
-
-   * No memories
-   * No missing modules
-
-7. **`btor2-cleaner.py`**
-
-   * Normalize and clean BTOR2 signal names
-
----
-
-## Steps to Build the Pipeline
-
-### 1. Add `MemToRegs` FIRRTL transform
-
-Add the following to `BoomConfig.scala` to eliminate memories *before* Verilog is generated:
-
-```scala
-import chisel3._
-import firrtl.options.Dependency
-import firrtl.passes.ReplaceMems
-import firrtl.stage.Forms
-import freechips.rocketchip.config.{Config, Field, Parameters}
-
-// FIRRTL transform to replace all memories with registers
-class MemToRegs extends firrtl.Transform {
-  override def invalidates(a: firrtl.Transform): Boolean = false
-  override def dependencies = Seq(Dependency(firrtl.passes.RemoveValidIf))
-  override def name = "Replace All Mems with Registers"
-
-  override def execute(state: firrtl.CircuitState): firrtl.CircuitState = {
-    val result = (new ReplaceMems).run(state.circuit)
-    state.copy(circuit = result)
-  }
-}
-
-// Config fragment to enable the transform
-class WithMemToRegs extends Config((site, here, up) => {
-  case firrtl.stage.FirrtlCircuitAnnotation =>
-    Seq(firrtl.annotations.Annotation(
-      firrtl.CircuitTarget("Top"),
-      classOf[MemToRegs],
-      ""
-    ))
-})
-
-// Example SmallBoom config with memory elimination enabled
-class SmallBoomV4Config extends Config(
-  new WithMemToRegs ++
-  new boom.v4.common.WithSmallBooms ++
-  new chipyard.config.AbstractConfig
-)
-```
-
----
-
-### 2. Build SmallBoom in Chipyard
-
-Build using the config that includes `WithMemToRegs`:
-
+**Run the full pipeline:**
 ```bash
-make <target> CONFIG=SmallBoomV4Config
+python3 run_formal_flow.py
 ```
 
-This ensures all FIRRTL memories are converted into registers.
-
----
-
-### 3. Generate a combined Verilog file
-
-Use **SV2V** to merge the generated Verilog into a single file representing the full SmallBoom design.
-
----
-
-### 4. Add missing `_ext` module definitions
-
-Run:
-
+**Run up to a specific step:**
+If you want to debug the intermediate Verilog (e.g., after blackboxing but before Yosys):
 ```bash
-python ext_definition_adder.py
+# Runs steps 1 through 4 (Blackboxing)
+python3 run_formal_flow.py 4
 ```
 
-This:
-
-* Detects instantiated but undefined `*_ext` modules
-* Auto-generates minimal blackbox definitions
-
-These stubs replace behavior that simulators like Verilator normally fill in.
-
----
-
-### 5. Manually fix missing ports
-
-Some `_ext` modules require manual fixes that cannot be inferred automatically:
-
-* `meta_0_ext`
-* `ghist_0_ext`
-* `rob_compact_uop_mem_0_ext`
-
-Add missing ports such as:
-
-* `R0_en`
-
----
-
-### 6. Add `plusarg_reader` blackbox
-
-Append the following blackbox definition to the combined Verilog:
-
-```verilog
-module plusarg_reader #(
-    parameter DEFAULT = 0,
-    parameter FORMAT = "",
-    parameter WIDTH = 32
-) (
-    output [WIDTH-1:0] out
-);
-// blackbox: no implementation
-endmodule
-```
-
-This removes simulation-only dependencies from the design.
-
----
-
-### 7. Perform shallow blackboxing
-
-Run:
-
+**List available steps:**
 ```bash
-python verilog-blackboxing.py
+python3 run_formal_flow.py --list-steps
 ```
-
-This:
-
-* Treats `BoomTile` as the verification boundary
-* Blackboxes most internal modules
-* Preserves selected whitebox modules (e.g., `LSU`) and their subtrees
 
 ---
 
-### 8. Convert Verilog to BTOR2
+## 🔍 Pipeline Architecture
 
-Run Yosys with your script:
+The flow consists of 8 distinct stages. Below is a detailed explanation of what happens at each stage and why.
 
-```bash
-yosys script.ys
-```
+### 1. External Definition Injection (`ext_definition_adder.py`)
+**Problem:** The generated Verilog often contains instantiations of modules (e.g., `Something_ext`) that have no definition, causing Yosys to crash.
+**Action:**
+*   Scans the Verilog for undefined modules.
+*   Infers port widths and directions based on instantiation connections.
+*   Auto-generates minimal blackbox stubs.
+*   Injects the `plusarg_reader` blackbox to handle simulation artifacts.
 
-This produces a `.btor2` file with:
+### 2. Syntax Patching (`fix.py`)
+**Problem:** Automated definition generation or Verilog conversion can sometimes leave syntax errors (e.g., missing ports on specific `_ext` modules like `meta_0_ext` or `R0_en`).
+**Action:** Applies regex-based patches to fix known syntax issues, missing ports, or malformed Verilog constructs.
 
-* No memories
-* No missing modules
-* Clean blackbox cutpoints
+### 3. Selective Blackboxing (`verilog-blackboxing.py`)
+**Problem:** The full CPU is too large for formal verification. We need to focus on specific units (like the LSU) while ignoring the complexity of the Decoder, FPU, or Branch Predictor.
+**Action:**
+*   Builds a module dependency graph.
+*   Treats `BoomTile` as the verification boundary.
+*   **Blackboxes** modules inside the tile by default.
+*   **Whiteboxes** specific targets (e.g., the Load/Store Unit) and recursively preserves their children.
+*   Adds `(* blackbox *)` attributes to the Verilog.
 
----
+### 4. Yosys Synthesis
+**Action:** Converts the processed Verilog into the BTOR2 format.
+*   **`proc`, `flatten`**: Standard netlist preparation.
+*   **`memory -nomap`**: Ensures any remaining arrays (like the Register File) are preserved as abstract arrays rather than bit-blasted logic.
+*   **`cutpoint -blackbox`**: Converts the outputs of blackboxed modules into unconstrained primary inputs (formal cutpoints).
+*   **`miter`**: Creates an identity miter structure required for certain formal workflows.
 
-### 9. Clean the BTOR2
+### 5. BTOR2 Cleaning (`btor2-cleaner.py`)
+**Problem:** Tools often generate BTOR2 with inconsistent naming, junk characters (like `$`), or names split across comments.
+**Action:**
+*   Normalizes signal names.
+*   Prioritizes comment-based names over inline names.
+*   Removes decorative comments and metadata.
+*   Ensures deterministic output for reproducible proofs.
 
-Finally, normalize signal names:
+### 6. State Replacement (`replace_states_with_inputs.py`)
+**Action:** Iterates through the BTOR2 file and converts specific state elements into inputs if they are determined to be driven by external constraints or blackboxes, further reducing state space.
 
-```bash
-python btor2-cleaner.py input.btor2 output.btor2
-```
-
-This:
-
-* Removes junk names
-* Resolves inline vs comment names
-* Produces a readable, deterministic BTOR2 model
-
----
-
-## What problem each script solves
-
-### `ext_definition_adder.py`
-
-When building **SmallBoom**, the generated Verilog often contains instantiations of modules that do **not** have corresponding definitions in the file, typically named like:
-
-```verilog
-Something_ext
-```
-
-This causes downstream tools to fail with errors such as:
-
-```
-Module 'X_ext' not found
-```
-
-However, the logic of these modules is **not required**—only their interfaces are.
-
-**What this script does:**
-
-* Detects instantiated but undefined `_ext` modules
-* Infers their interfaces from how they are connected
-* Auto-generates **minimal blackbox module definitions** with:
-
-  * Correct port names
-  * Correct directions
-  * Correct bit-widths
-
-This makes the Verilog **structurally complete** without adding unnecessary logic.
-
----
-
-### `verilog-blackboxing.py`
-
-A Verilog design forms a **module dependency graph**:
-
-* Modules instantiate other modules
-* This creates a hierarchy (tree/graph)
-
-This script lets you define a **verification boundary**, typically `BoomTile`.
-
-**Goal:**
-
-> Blackbox most logic *inside* `BoomTile`, while keeping a small set of important modules (e.g., `LSU`) fully visible. Everything outside `BoomTile` remains untouched.
-
-**Conceptually:**
-
-* Outside the boundary → **left intact**
-* Inside the boundary → **blackboxed by default**
-* Explicit exceptions → **kept as whiteboxes (along with their children)**
-
-**What this script does:**
-
-* Builds a dependency graph from the Verilog
-* Identifies all modules inside `BoomTile`
-* Adds `(* blackbox *)` annotations selectively
-* Enables **shallow blackboxing** for scalable formal verification
-
----
-
-### `btor2-cleaner.py`
-
-BTOR2 files generated by tools often contain messy or inconsistent signal naming:
-
-* Names may appear inline, in comments, or both
-* Tool-generated junk names (containing `$`)
-* Names split across multiple lines
-* Decorative comments (`; begin`, `; end`, filenames)
-
-These issues make debugging and formal analysis harder.
-
-**What this script does:**
-
-* Normalizes BTOR2 signal names
-* Ensures **at most one clean, valid name per command**
-* Applies deterministic name precedence:
-
-  * Comment name (highest priority)
-  * Inline name (fallback)
-  * No name if both are invalid
-* Removes decorative and junk comments
-
-The result is a **clean, readable, tool-friendly BTOR2 file**.
-
+### 7. Final Sanity Check (`nameless-states.py`)
+**Action:** Scans the final BTOR2 file to ensure all state elements have valid symbolic names. If states are missing names, it flags them, as this usually indicates an issue with the synthesis or cleaning process that makes debugging traces impossible.
 
