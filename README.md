@@ -1,12 +1,8 @@
-Here is the updated `README.md`. It prioritizes the "How-To" for immediate execution, followed by the technical deep dive into what the pipeline actually does.
-
-***
-
-# Stale Data Project: SmallBoom Verification Pipeline
+# Stale Data Project 
 
 This repository contains the preprocessing pipeline designed to prepare the **SmallBoom** RISC-V design for scalable formal verification. The pipeline transforms a raw Chisel/Verilog design into a clean, optimized **BTOR2** model by eliminating memories, handling missing definitions, and applying selective blackboxing.
 
-## 🚀 How to Run the Flow
+## How to Run the Flow
 
 ### Prerequisites
 *   **Chipyard** (with `verilator` and `yosys` installed in the environment)
@@ -45,7 +41,7 @@ python3 run_formal_flow.py --list-steps
 
 ---
 
-## 🔍 Pipeline Architecture
+## Pipeline Architecture
 
 The flow consists of 8 distinct stages. Below is a detailed explanation of what happens at each stage and why.
 
