@@ -11,13 +11,13 @@ INPUT_VERILOG = "combined_converted.v"
 TOP_MODULE    = "RocketTile"  # Change this if your top module is different
 
 # Intermediate filenames
-FILE_EXT_DEFS   = "1_with_ext_defs.v"
-FILE_FIXED      = "2_syntax_fixed.v"
-FILE_BLACKBOXED = "3_blackboxed.v"
-FILE_YOSYS_BTOR = "4_yosys_raw.btor2"
-FILE_CLEANED    = "5_cleaned.btor2"
+FILE_EXT_DEFS   = "combined_with_ext.v"
+FILE_FIXED      = "combined_syntax_fixed.v"
+FILE_BLACKBOXED = "combined_blackboxed.v"
+FILE_YOSYS_BTOR = "yosys_raw.btor2"
+FILE_CLEANED    = "final_cleaned.btor2"
 FILE_FINAL      = "final_output.btor2"
-FILE_YOSYS_SCRIPT = "flow_script.ys"
+FILE_YOSYS_SCRIPT = "script.ys"
 
 # ==============================================================================
 # STEP IMPLEMENTATIONS
@@ -49,7 +49,7 @@ def step_fix_syntax():
 def step_blackbox():
     """Step 4: Verilog Blackboxing"""
     run_command(
-        ["python3", "verilog-blackboxing.py", FILE_FIXED, "-o", FILE_BLACKBOXED],
+        ["python3", "verilog-blackboxing.py", FILE_FIXED, "-o", FILE_BLACKBOXED, "--boundary", TOP_MODULE],
         "Blackboxing"
     )
 
@@ -92,14 +92,14 @@ def step_yosys():
 def step_btor2_cleaner():
     """Step 6: Clean BTOR2"""
     run_command(
-        ["python3", "btor2-cleaner.py", FILE_YOSYS_BTOR, "-o", FILE_CLEANED],
+        ["python3", "btor2-cleaner.py", FILE_YOSYS_BTOR, FILE_CLEANED],
         "BTOR2 Cleaner"
     )
 
 def step_replace_states():
     """Step 7: Replace States with Inputs"""
     run_command(
-        ["python3", "replace_states_with_inputs.py", FILE_CLEANED, "-o", FILE_FINAL],
+        ["python3", "replace_states_with_inputs.py", FILE_CLEANED, FILE_FINAL],
         "Replace States"
     )
 
