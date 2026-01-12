@@ -107,6 +107,8 @@ save_context:
 
     # Restore t0 so the handler logic can use it (it points to ctx)
     mv   t0, t0 
+
+    csrw sscratch, t0 
     ret
 # -------------------------
 # Switch Context Pointer
