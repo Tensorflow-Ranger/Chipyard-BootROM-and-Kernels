@@ -3,6 +3,8 @@
 import re
 import sys
 from collections import deque
+import argparse
+import sys
 
 def build_verilog_dependency_graph(fir_filepath):
     """
@@ -73,13 +75,13 @@ def annotate_verilog(input_filepath, output_filepath, blacklist_set):
     print(f"Annotation complete. Black-boxed {annotated_count} modules.")
 
 if __name__ == "__main__":
+    args = parse_args()
+    
     # --- CONFIGURATION ---
-    input_verilog_file = "combined_with_ext.v"
-    output_verilog_file = "combined_blackboxed.v"
-
-    # 1. The module that defines the boundary. We will blackbox things INSIDE this.
-    boundary_module = "BoomTile"
-
+    input_verilog_file = args.input_file
+    output_verilog_file = args.output
+    boundary_module = args.boundary
+        
     # 2. Modules INSIDE the boundary to KEEP as whiteboxes (and all their children).
     internal_whitelist_seeds = {
         "LSU",
