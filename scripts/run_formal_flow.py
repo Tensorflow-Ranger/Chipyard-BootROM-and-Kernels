@@ -15,7 +15,7 @@ FILE_EXT_DEFS   = "combined_with_ext.v"
 FILE_FIXED      = "combined_syntax_fixed.v"
 FILE_BLACKBOXED = "combined_blackboxed.v"
 FILE_YOSYS_BTOR = "yosys_raw.btor2"
-FILE_CLEANED    = "final_cleaned.btor2"
+FILE_CLEANED    = "cleaned.btor2"
 FILE_FINAL      = "final_output.btor2"
 FILE_YOSYS_SCRIPT = "script.ys"
 
@@ -63,7 +63,7 @@ def step_yosys():
     # Standard cleanup
     proc
     flatten
-    memory -nomap
+    memory_map
     
     # Handle blackboxes
     cutpoint -blackbox
