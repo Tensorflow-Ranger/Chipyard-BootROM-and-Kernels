@@ -103,8 +103,15 @@ def step_replace_states():
         "Replace States"
     )
 
+def input_name_adder():
+    """Step 8: Clean BTOR2"""
+    run_command(
+        ["python3", "btor2-cleaner.py", FILE_FINAL, FILE_FINAL],
+        "BTOR2 Cleaner"
+    )
+
 def step_check_names():
-    """Step 8: Check for Missing Names"""
+    """Step 9: Check for Missing Names"""
     # Assuming nameless-states.py prints result to stdout and takes filename as arg
     # We add -v if the script supports it, otherwise just the file
     cmd = ["python3", "nameless-states.py", FILE_FINAL, "-v"]
@@ -122,8 +129,8 @@ FLOW = [
     {"id": 4, "desc": "Apply Blackboxing",             "func": step_blackbox},
     {"id": 5, "desc": "Run Yosys (Generate BTOR2)",    "func": step_yosys},
     {"id": 6, "desc": "Run BTOR2 Cleaner",             "func": step_btor2_cleaner},
-    {"id": 7, "desc": "Replace States with Inputs",    "func": step_replace_states},
-    {"id": 8, "desc": "Check Missing Names",           "func": step_check_names},
+    {"id": 8, "desc": "Renaming the new inputs",       "func": input_name_adder},
+    {"id": 9, "desc": "Check Missing Names",           "func": step_check_names},
 ]
 
 # ==============================================================================

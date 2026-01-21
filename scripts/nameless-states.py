@@ -1,76 +1,87 @@
-#  Figures out which lines in a BTOR2 file are state lines without symbolic names.
-# Also tells you how many of them. 
 import sys
 import os
 
-def parse_btor2_for_unnamed_states(filepath):
+def parse_btor2_for_unnamed_states_and_inputs(filepath):
     """
-    Parses a BTOR2 file to find and count state lines without a symbolic name.
+    Parses a BTOR2 file to find and count state and input lines without symbolic names.
 
     Args:
         filepath (str): The path to the .btor2 file.
 
     Returns:
         A tuple containing:
-        - total_states (int): The total number of state lines found.
-        - unnamed_states (int): The number of state lines without a name.
-        - unnamed_lines_list (list): A list of the actual unnamed state lines.
+        - total_states (int)
+        - unnamed_states (int)
+        - unnamed_state_lines (list)
+        - total_inputs (int)
+        - unnamed_inputs (int)
+        - unnamed_input_lines (list)
     """
-    # --- Input Validation ---
     if not os.path.exists(filepath):
         print(f"Error: File not found at '{filepath}'")
-        return None, None, None
-    if not filepath.endswith('.btor2'):
-        print(f"Warning: File '{filepath}' does not have a .btor2 extension.")
+        return (None,) * 6
 
-    # --- Initialization ---
     total_states = 0
     unnamed_states = 0
-    unnamed_lines_list = []
-    
+    unnamed_state_lines = []
+
+    total_inputs = 0
+    unnamed_inputs = 0
+    unnamed_input_lines = []
+
     print(f"Starting analysis of '{filepath}'...")
+
     try:
         with open(filepath, 'r') as f:
             for line_num, line in enumerate(f, 1):
-                # Split the line into tokens based on whitespace
                 tokens = line.strip().split()
+                if len(tokens) < 3:
+                    continue
 
-                # A valid 'state' line must have at least 3 tokens (e.g., "id state width")
-                # and the second token must be the keyword 'state'.
-                if len(tokens) >= 3 and tokens[1] == 'state':
+                kind = tokens[1]
+                last_token = tokens[-1]
+
+                has_name = not last_token.isdigit()
+
+                if kind == 'state':
                     total_states += 1
-
-                    # The symbolic name, if it exists, is always the last token.
-                    # A symbolic name is a string that is not a plain number.
-                    last_token = tokens[-1]
-                    
-                    # If the last token consists only of digits, it must be a node ID,
-                    # which means there is no symbolic name present.
-                    if last_token.isdigit():
+                    if not has_name:
                         unnamed_states += 1
-                        # Store the line number and content for optional printing
-                        unnamed_lines_list.append(f"Line {line_num}: {line.strip()}")
+                        unnamed_state_lines.append(
+                            f"Line {line_num}: {line.strip()}"
+                        )
+
+                elif kind == 'input':
+                    total_inputs += 1
+                    if not has_name:
+                        unnamed_inputs += 1
+                        unnamed_input_lines.append(
+                            f"Line {line_num}: {line.strip()}"
+                        )
 
     except Exception as e:
         print(f"An error occurred while reading the file: {e}")
-        return None, None, None
+        return (None,) * 6
 
-    return total_states, unnamed_states, unnamed_lines_list
+    return (
+        total_states,
+        unnamed_states,
+        unnamed_state_lines,
+        total_inputs,
+        unnamed_inputs,
+        unnamed_input_lines,
+    )
+
 
 def main():
-    """
-    Main function to run the script from the command line.
-    """
-    # --- Argument Parsing ---
     args = sys.argv[1:]
     if not args:
-        print("Usage: python check_btor2_names_v2.py <path_to_btor2_file> [--print-unnamed]")
+        print("Usage: python check_btor2_names_v3.py <path_to_btor2_file> [--print-unnamed]")
         sys.exit(1)
 
-    # Find the filepath and check for the optional flag
     filepath = None
     print_unnamed_flag = False
-    
+
     for arg in args:
         if arg == '--print-unnamed':
             print_unnamed_flag = True
@@ -79,40 +90,54 @@ def main():
         else:
             print(f"Unknown option: {arg}")
             sys.exit(1)
-            
+
     if not filepath:
         print("Error: No btor2 file specified.")
-        print("Usage: python check_btor2_names_v2.py <path_to_btor2_file> [--print-unnamed]")
         sys.exit(1)
 
-    # --- Run Analysis ---
-    total_states, unnamed_states, unnamed_lines_list = parse_btor2_for_unnamed_states(filepath)
+    (
+        total_states,
+        unnamed_states,
+        unnamed_state_lines,
+        total_inputs,
+        unnamed_inputs,
+        unnamed_input_lines,
+    ) = parse_btor2_for_unnamed_states_and_inputs(filepath)
 
     if total_states is None:
-        # An error occurred during parsing, exit gracefully.
         sys.exit(1)
-        
-    # --- Print Summary ---
+
     print("\n--- Analysis Complete ---")
+
+    # --- State summary ---
     print(f"Total 'state' lines found: {total_states}")
     print(f"State lines MISSING a name: {unnamed_states}")
-
     if total_states > 0:
-        named_states = total_states - unnamed_states
-        percentage_unnamed = (unnamed_states / total_states) * 100
-        print(f"State lines WITH a name:    {named_states}")
-        print(f"Percentage of unnamed states: {percentage_unnamed:.2f}%")
+        print(f"Percentage unnamed states: {(unnamed_states / total_states) * 100:.2f}%")
+
+    print()
+
+    # --- Input summary ---
+    print(f"Total 'input' lines found: {total_inputs}")
+    print(f"Input lines MISSING a name: {unnamed_inputs}")
+    if total_inputs > 0:
+        print(f"Percentage unnamed inputs: {(unnamed_inputs / total_inputs) * 100:.2f}%")
+
     print("-------------------------")
 
-    # --- Optionally Print Unnamed Lines ---
     if print_unnamed_flag:
-        if unnamed_lines_list:
-            print("\n--- Unnamed State Lines Found ---")
-            for line in unnamed_lines_list:
-                print(line)
-            print("---------------------------------")
-        else:
-            print("\nNo unnamed state lines were found to print.")
+        if unnamed_state_lines:
+            print("\n--- Unnamed State Lines ---")
+            for l in unnamed_state_lines:
+                print(l)
+
+        if unnamed_input_lines:
+            print("\n--- Unnamed Input Lines ---")
+            for l in unnamed_input_lines:
+                print(l)
+
+        if not unnamed_state_lines and not unnamed_input_lines:
+            print("\nNo unnamed state or input lines found.")
 
 
 if __name__ == "__main__":
