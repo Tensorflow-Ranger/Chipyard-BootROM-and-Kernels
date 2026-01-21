@@ -63,7 +63,7 @@ def step_yosys():
     # Standard cleanup
     proc
     flatten
-    memory_map
+    memory -nomap
     
     # Handle blackboxes
     cutpoint -blackbox

@@ -11,7 +11,7 @@ This repository contains the preprocessing pipeline designed to prepare the **Sm
 
 ### Phase 1: Chisel Generation 
 Before running the scripts, you must generate the Verilog.
-Note: You do not need to eliminate memories at this stage. Yosys will do that for us. 
+Replace ``` Mem(``` with ```RegVec(``` in your Chisel source files. Then build your target chip. 
 
 1.  **Build Chipyard**:
     ```bash
