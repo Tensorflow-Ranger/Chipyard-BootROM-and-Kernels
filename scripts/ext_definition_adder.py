@@ -7,6 +7,7 @@ def parse_verilog_for_context(input_filepath):
     """
     First pass: Parse the entire Verilog file to gather context using a more robust parser.
     """
+    # pf:ensures:parse_verilog_for_context.modules_have_declarations all defined modules have corresponding declarations
     print(f"Pass 1: Parsing '{input_filepath}' for all module declarations...")
     
     module_def_regex = re.compile(r"^\s*module\s+([a-zA-Z_][\w]*)")
@@ -54,6 +55,8 @@ def find_and_define_missing_modules(input_filepath, defined_modules, module_decl
     """
     Second pass: Finds instantiations of missing _ext modules and generates their definitions.
     """
+    # pf:requires:find_and_define_missing_modules.context_populated defined_modules and module_declarations must be populated from parse_verilog_for_context
+    # pf:ensures:find_and_define_missing_modules.missing_not_defined returned modules are not in defined_modules
     # This function's logic remains correct given the improved context from Pass 1.
     print("\nPass 2: Finding missing blackbox instantiations...")
     
@@ -116,6 +119,8 @@ def generate_and_append_modules(output_filepath, input_filepath, new_modules_dat
     """
     Generates the Verilog code for new modules and appends it to the original file content.
     """
+    # pf:requires:generate_and_append_modules.modules_from_pass2 new_modules_data must be computed by find_and_define_missing_modules
+    # pf:ensures:generate_and_append_modules.all_modules_generated generated_code length equals new_modules_data length
     print("\nPass 3: Generating and writing new file...")
     generated_code = []
     for module_name, ports in new_modules_data.items():

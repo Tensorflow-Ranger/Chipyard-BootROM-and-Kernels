@@ -1,5 +1,57 @@
 import sys
 import os
+import re
+
+
+def normalize_name(name):
+    # Step 0: remove cmp_ prefix globally
+    if name.startswith('cmp_'):
+        name = name[len('cmp_'):]
+
+    # Step 1: normalize gold_ / gate_ to namespaces
+    if name.startswith('gold_'):
+        name = 'gold.' + name[len('gold_'):]
+    elif name.startswith('gate_'):
+        name = 'gate.' + name[len('gate_'):]
+
+    m = re.search(
+        r'\.lsu\.retry_queue\.ram_ext\.Memory\[(\d+)\]$',
+        name
+    )
+    if m:
+        idx = m.group(1)
+        name = name[:m.start()] + f'.lsu.retry_queue.ram_{idx}_data'
+
+    # Step 2: special-case buffer_<n> instance
+    # gold._buffer_1_foo -> gold.buffer_1.foo
+    for prefix in ('gold.', 'gate.'):
+        buf_prefix = prefix + '_buffer_'
+        if name.startswith(buf_prefix):
+            rest = name[len(buf_prefix):]   # e.g. "1_foo"
+            if '_' in rest:
+                idx, tail = rest.split('_', 1)
+                name = f"{prefix}buffer_{idx}.{tail}"
+            else:
+                name = f"{prefix}buffer_{rest}"
+            return name  # IMPORTANT: stop further processing
+
+    # Step 3: generic instance split
+    # gold._foo_bar -> gold.foo.bar
+    # gate._foo_bar -> gate.foo.bar
+    for prefix in ('gold.', 'gate.'):
+        if name.startswith(prefix + '_'):
+            rest = name[len(prefix) + 1:]  # drop prefix + '_'
+            if '_' in rest:
+                inst, tail = rest.split('_', 1)
+                name = f"{prefix}{inst}.{tail}"
+            else:
+                name = f"{prefix}{rest}"
+
+    return name
+
+
+
+
 
 def process_btor2_file(input_path, output_path):
     """
@@ -82,11 +134,22 @@ def process_btor2_file(input_path, output_path):
 
             # --- Validate and record ---
             if candidate:
+                # Unescape
                 if candidate.startswith('\\'):
                     candidate = candidate[1:]
-                if '$' not in candidate:
-                    if src_id not in input_name_map:
-                        input_name_map[src_id] = candidate
+
+                # Drop junk
+                if '$' in candidate:
+                    i += 1
+                    continue
+
+                # Normalize prefix
+                candidate = normalize_name(candidate)
+
+                # Record
+                if src_id not in input_name_map:
+                    input_name_map[src_id] = candidate
+
 
         i += 1
 
@@ -163,7 +226,10 @@ def process_btor2_file(input_path, output_path):
             final_line += f" {comment_name}"
         # Next: inline name already on this line
         elif good_inline_name:
-            final_line += f" {good_inline_name}"
+            name = normalize_name(good_inline_name)
+
+            final_line += f" {name}"
+
         # NEW: if this is an input, try to inherit name from uext usage
         elif len(tokens) > 1 and tokens[1] == 'input' and command_id in input_name_map:
             final_line += f" {input_name_map[command_id]}"
