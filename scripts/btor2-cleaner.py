@@ -2,7 +2,6 @@ import sys
 import os
 import re
 
-
 def normalize_name(name):
     # Step 0: remove cmp_ prefix globally
     if name.startswith('cmp_'):

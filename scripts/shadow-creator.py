@@ -122,25 +122,36 @@ def find_max_id(lines):
 
 def build_shadow_lines(states, start_id):
     """
-    For every entry in states, produce a shadow state (boolean width=1).
-    Returns list of shadow-line strings and next_free_id.
+    For every entry in states, produce:
+      - a shadow boolean state (width=1)
+      - a next line that forces it to 0
+    Returns list of lines and next_free_id.
     """
     next_id = start_id
     shadow_lines = []
+
     for s in states:
         orig_id = s['id']
+
         # choose base name
         if s['name']:
             base_name = sanitize_name_for_btor(s['name'])
         else:
             base_name = f"state_{orig_id}"
+
         shadow_name = f"shadow_{base_name}"
-        # ensure BTOR-style escaping with leading backslash (only if necessary)
-        # We'll always prefix backslash to be safe
         btor_name = '\\' + shadow_name
-        line = f"{next_id} state 1 {btor_name}"
-        shadow_lines.append(line)
+
+        # state line
+        state_id = next_id
+        shadow_lines.append(f"{state_id} state 1 {btor_name}")
         next_id += 1
+
+        # next line: next <state> 0 0
+        next_line_id = next_id
+        shadow_lines.append(f"{next_line_id} next {state_id} 0 0")
+        next_id += 1
+
     return shadow_lines, next_id
 
 def process_btor2_file_create_shadows(input_path, output_combined_path, output_shadows_path=None):
@@ -178,13 +189,9 @@ def process_btor2_file_create_shadows(input_path, output_combined_path, output_s
     # Write combined and shadows-only
     write_lines(output_combined_path, combined_lines)
     # include the same header comment in the shadows-only file
-    shadows_only_content = ['; shadow boolean states generated from: ' + os.path.basename(input_path)]
-    shadows_only_content.extend(shadow_lines)
-    write_lines(output_shadows_path, shadows_only_content)
 
     print(f"Created {len(shadow_lines)} shadow states.")
     print(f"Combined file written: {output_combined_path}")
-    print(f"Shadows-only file written: {output_shadows_path}")
 
 def main():
     if len(sys.argv) < 3 or len(sys.argv) > 4:
@@ -199,3 +206,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
