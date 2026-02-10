@@ -2,3 +2,5 @@
 .cursor/
 .vscode/
 .mcp.json
+opencode.json
+.DS_Store
