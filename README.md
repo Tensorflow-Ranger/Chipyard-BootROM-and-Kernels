@@ -41,7 +41,7 @@ python3 run_formal_flow.py --list-steps
 
 ---
 
-## Pipeline Architecture
+## Pre-Processing Pipeline Architecture
 
 The flow consists of 8 distinct stages. Below is a detailed explanation of what happens at each stage and why.
 
@@ -87,3 +87,20 @@ The flow consists of 8 distinct stages. Below is a detailed explanation of what 
 ### 7. Final Sanity Check (`nameless-states.py`)
 **Action:** Scans the final BTOR2 file to ensure all state elements have valid symbolic names. If states are missing names, it flags them, as this usually indicates an issue with the synthesis or cleaning process that makes debugging traces impossible.
 
+## Shadow States Pipeline
+
+### Writing the shadow states to the btor2
+Use **shadow-creator.py** to insert shadow states for every single states and inputs that exist in your btor2 file.
+
+### Generating positive examples
+Logically split your .vcd file into multiple chunks by inspecting and figuring out where one process starts and the other process starts. 
+You can do this by writing a different config.yaml where you mention different start and end patterns for each of the 'clips'
+
+Now generate a positive example using each of these configs and the command python3 -m learning.examples vcd-to-pex --config examples/rocketchip/<clip>.yaml 
+
+### Instrumenting and filling in shadow states in pex
+Use **pex_shadow.py** and **pex_shadow_2.py** to generate new positive examples with the shadow states appended and filled in. 
+
+**pex_shadow.py** turns any shadow state to 1 or True if it's value changes from the previous snapshot. 
+
+**pex_shadow_2.py** turns any shadow state to 0 or False if it's value changes from the previous snapshot. It also references the prev filled positive example's last snapshot to update values for the current positive example. 
