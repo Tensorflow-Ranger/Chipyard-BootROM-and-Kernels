@@ -1,0 +1,3 @@
+[submodule "external/Scripts-for-SDP"]
+	path = external/Scripts-for-SDP
+	url = https://github.com/Tensorflow-Ranger/Scripts-for-SDP.git
